@@ -32,7 +32,7 @@ data "aws_subnet_ids" "default" {
 module "alb" {
   source                   = "terraform-aws-modules/alb/aws"
   load_balancer_name       = "search"
-  security_groups          = ["${var.aws_security_group.search_alb.id}"]
+  security_groups          = ["${aws_security_group.search_alb.id}"]
   log_bucket_name          = "wayot-backups"
   log_location_prefix      = "alb/search"
   subnets                  = "${data.aws_subnet_ids.default.ids}"
@@ -48,7 +48,7 @@ module "alb" {
 
 module "asg" {
   source = "terraform-aws-modules/autoscaling/aws"
-
+  name = "search"
   asg_name = "search"
 
   # Launch configuration
@@ -56,7 +56,7 @@ module "asg" {
 
   image_id        = "ami-4e79ed36"
   instance_type   = "t2.medium"
-  security_groups = ["${var.aws_security_group.search_lc}"]
+  security_groups = ["${aws_security_group.search_lc.id}"]
 
   root_block_device = [
     {
@@ -107,7 +107,7 @@ module "asg" {
 }
 
 resource "aws_security_group" "search_alb" {
-  name        = "search"
+  name        = "search-alb"
   description = "search alb"
   vpc_id      = "${data.aws_vpc.default.id}"
   tags        = "${merge(var.tags, map("Name", "search-alb"), map("Function", "alb"))}"
@@ -154,7 +154,7 @@ resource "aws_security_group_rule" "search_alb_443_app" {
 }
 
 resource "aws_security_group" "search_lc" {
-  name        = "search"
+  name        = "search-ec2"
   description = "search launch configuration"
   vpc_id      = "${data.aws_vpc.default.id}"
   tags        = "${merge(var.tags, map("Name", "search-lc"), map("Function", "ec2"))}"
@@ -201,7 +201,7 @@ resource "aws_security_group_rule" "search_lc_all" {
 }
 
 resource "aws_security_group" "search_db" {
-  name        = "search"
+  name        = "search-db"
   description = "search database"
   vpc_id      = "${data.aws_vpc.default.id}"
   tags        = "${merge(var.tags, map("Name", "search-db"), map("Function", "rds"))}"
