@@ -38,6 +38,7 @@ module "alb" {
   tags                     = "${merge(var.tags, map("Name", "search"), map("Function", "alb"))}"
   vpc_id                   = "${data.aws_vpc.default.id}"
   https_listeners          = "${list(map("certificate_arn", "arn:aws:acm:us-west-2:835387872147:certificate/cfe3929a-ea07-4569-b232-fc9e66e2eff3", "port", 443))}"
+  ssl_policy               = "${list(map("ssl_policy", "ELBSecurityPolicy-TLS-1-2-2017-01"))}"
   https_listeners_count    = "1"
   http_tcp_listeners       = "${list(map("port", "80", "protocol", "HTTP"))}"
   http_tcp_listeners_count = "1"
@@ -74,7 +75,8 @@ module "asg" {
   wait_for_capacity_timeout   = 0
   associate_public_ip_address = true
   key_name                    = "search"
-  load_balancers              = ["${module.alb.load_balancer_id}"]
+  # load_balancers              = ["${module.alb.load_balancer_id}"] --> ELB Classic 
+  target_group_arns           = ["${module.alb.target_group_arn}"]
 
   tags = [
     {
