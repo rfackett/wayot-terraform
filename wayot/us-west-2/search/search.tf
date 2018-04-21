@@ -54,7 +54,7 @@ module "asg" {
   # Launch configuration
   lc_name = "search"
 
-  image_id        = "ami-4e79ed36"
+  image_id        = "ami-0128b99c99eccdd06"
   instance_type   = "t2.medium"
   security_groups = ["${aws_security_group.search_lc.id}"]
 
@@ -75,7 +75,7 @@ module "asg" {
   wait_for_capacity_timeout   = 0
   associate_public_ip_address = true
   key_name                    = "search"
-  # load_balancers              = ["${module.alb.load_balancer_id}"] --> ELB Classic 
+  # load_balancers              = ["${module.alb.load_balancer_id}"] --> ELB Classic
   target_group_arns           = ["${module.alb.target_group_arn}"]
 
   tags = [
