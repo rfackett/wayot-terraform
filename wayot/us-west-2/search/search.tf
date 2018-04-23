@@ -30,6 +30,10 @@ data "aws_subnet_ids" "default" {
   vpc_id = "${data.aws_vpc.default.id}"
 }
 
+data "aws_sns_topic" "slack" {
+  name = "slack"
+}
+
 module "alb" {
   source                   = "terraform-aws-modules/alb/aws"
   load_balancer_name       = "search"
@@ -228,4 +232,96 @@ resource "aws_security_group_rule" "search_db_whitelist" {
   cidr_blocks = "${var.whitelist}"
 
   security_group_id = "${aws_security_group.search_db.id}"
+}
+
+resource "aws_autoscaling_notification" "asg_slack" {
+  group_names = [
+    "${module.asg.this_autoscaling_group_name}"
+  ]
+
+  notifications = [
+    "autoscaling:EC2_INSTANCE_LAUNCH",
+    "autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
+    "autoscaling:EC2_INSTANCE_TERMINATE",
+    "autoscaling:EC2_INSTANCE_TERMINATE_ERROR",
+    "autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
+  ]
+
+  topic_arn = "${data.aws_sns_topic.slack.arn}"
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_healthyhosts" {
+  alarm_name  = "search-alb-healthy-hosts"
+  alarm_actions     = [
+    "${data.aws_sns_topic.slack.arn}"
+  ]
+  namespace   = "AWS/ApplicationELB"
+  metric_name = "HealthyHostCount"
+
+  dimensions = {
+    LoadBalancer = "${module.alb.load_balancer_arn_suffix}"
+  }
+
+  statistic           = "Average"
+  period              = 60
+  comparison_operator = "LessThanThreshold"
+  threshold           = "1"
+  evaluation_periods  = 2
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
+  alarm_name  = "search-alb-5xx"
+  alarm_actions     = [
+    "${data.aws_sns_topic.slack.arn}"
+  ]
+  namespace   = "AWS/ApplicationELB"
+  metric_name = "HTTPCode_ELB_5XX_Count"
+
+  dimensions = {
+    LoadBalancer = "${module.alb.load_balancer_arn_suffix}"
+  }
+
+  statistic           = "Sum"
+  period              = 60
+  comparison_operator = "GreatherThanThreshold"
+  threshold           = "10"
+  evaluation_periods  = 2
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_target_5xx" {
+  alarm_name  = "search-alb-target-5xx"
+  alarm_actions     = [
+    "${data.aws_sns_topic.slack.arn}"
+  ]
+  namespace   = "AWS/ApplicationELB"
+  metric_name = "HTTPCode_Target_5XX_Count"
+
+  dimensions = {
+    LoadBalancer = "${module.alb.load_balancer_arn_suffix}"
+  }
+
+  statistic           = "Sum"
+  period              = 60
+  comparison_operator = "GreatherThanThreshold"
+  threshold           = "10"
+  evaluation_periods  = 2
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_target_response" {
+  alarm_name  = "search-alb-target-5xx"
+  alarm_actions     = [
+    "${data.aws_sns_topic.slack.arn}"
+  ]
+  namespace   = "AWS/ApplicationELB"
+  metric_name = "TargetResponseTime"
+
+  dimensions = {
+    LoadBalancer = "${module.alb.load_balancer_arn_suffix}"
+  }
+
+  statistic           = "Average"
+  period              = 60
+  comparison_operator = "GreatherThanThreshold"
+  threshold           = "10"
+  evaluation_periods  = 2
 }
