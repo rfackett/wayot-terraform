@@ -15,7 +15,8 @@ variable "whitelist" {
   default = [
     "69.222.185.243/32",
     "66.175.217.148/32",
-    "198.27.103.16/32"
+    "198.27.103.16/32",
+    "76.80.9.214/32"
   ]
 }
 
@@ -34,6 +35,16 @@ data "aws_sns_topic" "slack" {
   name = "slack"
 }
 
+data "aws_ami" "wayot" {
+  most_recent      = true
+  owners     = ["835387872147"]
+
+  filter {
+    name   = "name"
+    values = ["wayot_*"]
+  }
+}
+
 module "alb" {
   source                   = "terraform-aws-modules/alb/aws"
   load_balancer_name       = "search"
@@ -48,7 +59,7 @@ module "alb" {
   https_listeners_count    = "1"
   http_tcp_listeners       = "${list(map("port", "80", "protocol", "HTTP"))}"
   http_tcp_listeners_count = "1"
-  target_groups            = "${list(map("name", "search", "backend_protocol", "HTTP", "backend_port", "80", "health_check_path", "/directory.phtml"))}"
+  target_groups            = "${list(map("name", "search", "backend_protocol", "HTTP", "backend_port", "80", "health_check_path", "/search/"))}"
   target_groups_count      = "1"
 }
 
@@ -60,8 +71,8 @@ module "asg" {
   # Launch configuration
   lc_name = "search"
 
-  image_id        = "ami-0128b99c99eccdd06"
-  instance_type   = "t2.medium"
+  image_id        = "${data.aws_ami.wayot.id}"
+  instance_type   = "t2.small"
   security_groups = ["${aws_security_group.search_lc.id}"]
 
   root_block_device = [
@@ -74,9 +85,9 @@ module "asg" {
   # Auto scaling group
   asg_name                    = "search"
   vpc_zone_identifier         = "${data.aws_subnet_ids.default.ids}"
-  health_check_type           = "ELB"
+  health_check_type           = "EC2"
   min_size                    = 0
-  max_size                    = 1
+  max_size                    = 2
   desired_capacity            = 1
   wait_for_capacity_timeout   = 0
   associate_public_ip_address = true
@@ -308,7 +319,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_target_5xx" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "alb_target_response" {
-  alarm_name  = "search-alb-target-5xx"
+  alarm_name  = "search-alb-target-response"
   alarm_actions     = [
     "${data.aws_sns_topic.slack.arn}"
   ]
