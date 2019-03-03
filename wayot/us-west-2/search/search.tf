@@ -15,7 +15,8 @@ variable "whitelist" {
   default = [
     "69.222.185.243/32",
     "66.175.217.148/32",
-    "198.27.103.16/32"
+    "198.27.103.16/32",
+    "76.80.9.214/32"
   ]
 }
 
@@ -28,6 +29,20 @@ data "aws_vpc" "default" {
 
 data "aws_subnet_ids" "default" {
   vpc_id = "${data.aws_vpc.default.id}"
+}
+
+data "aws_sns_topic" "slack" {
+  name = "slack"
+}
+
+data "aws_ami" "wayot" {
+  most_recent      = true
+  owners     = ["835387872147"]
+
+  filter {
+    name   = "name"
+    values = ["wayot_*"]
+  }
 }
 
 module "alb" {
@@ -44,7 +59,7 @@ module "alb" {
   https_listeners_count    = "1"
   http_tcp_listeners       = "${list(map("port", "80", "protocol", "HTTP"))}"
   http_tcp_listeners_count = "1"
-  target_groups            = "${list(map("name", "search", "backend_protocol", "HTTP", "backend_port", "80"))}"
+  target_groups            = "${list(map("name", "search", "backend_protocol", "HTTP", "backend_port", "80", "health_check_path", "/search/"))}"
   target_groups_count      = "1"
 }
 
@@ -56,8 +71,8 @@ module "asg" {
   # Launch configuration
   lc_name = "search"
 
-  image_id        = "ami-0128b99c99eccdd06"
-  instance_type   = "t2.medium"
+  image_id        = "${data.aws_ami.wayot.id}"
+  instance_type   = "t2.small"
   security_groups = ["${aws_security_group.search_lc.id}"]
 
   root_block_device = [
@@ -70,9 +85,9 @@ module "asg" {
   # Auto scaling group
   asg_name                    = "search"
   vpc_zone_identifier         = "${data.aws_subnet_ids.default.ids}"
-  health_check_type           = "ELB"
+  health_check_type           = "EC2"
   min_size                    = 0
-  max_size                    = 1
+  max_size                    = 2
   desired_capacity            = 1
   wait_for_capacity_timeout   = 0
   associate_public_ip_address = true
@@ -228,4 +243,96 @@ resource "aws_security_group_rule" "search_db_whitelist" {
   cidr_blocks = "${var.whitelist}"
 
   security_group_id = "${aws_security_group.search_db.id}"
+}
+
+resource "aws_autoscaling_notification" "asg_slack" {
+  group_names = [
+    "${module.asg.this_autoscaling_group_name}"
+  ]
+
+  notifications = [
+    "autoscaling:EC2_INSTANCE_LAUNCH",
+    "autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
+    "autoscaling:EC2_INSTANCE_TERMINATE",
+    "autoscaling:EC2_INSTANCE_TERMINATE_ERROR",
+    "autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
+  ]
+
+  topic_arn = "${data.aws_sns_topic.slack.arn}"
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_healthyhosts" {
+  alarm_name  = "search-alb-healthy-hosts"
+  alarm_actions     = [
+    "${data.aws_sns_topic.slack.arn}"
+  ]
+  namespace   = "AWS/ApplicationELB"
+  metric_name = "HealthyHostCount"
+
+  dimensions = {
+    LoadBalancer = "${module.alb.load_balancer_arn_suffix}"
+  }
+
+  statistic           = "Average"
+  period              = 60
+  comparison_operator = "LessThanThreshold"
+  threshold           = "1"
+  evaluation_periods  = 2
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
+  alarm_name  = "search-alb-5xx"
+  alarm_actions     = [
+    "${data.aws_sns_topic.slack.arn}"
+  ]
+  namespace   = "AWS/ApplicationELB"
+  metric_name = "HTTPCode_ELB_5XX_Count"
+
+  dimensions = {
+    LoadBalancer = "${module.alb.load_balancer_arn_suffix}"
+  }
+
+  statistic           = "Sum"
+  period              = 60
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = "10"
+  evaluation_periods  = 2
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_target_5xx" {
+  alarm_name  = "search-alb-target-5xx"
+  alarm_actions     = [
+    "${data.aws_sns_topic.slack.arn}"
+  ]
+  namespace   = "AWS/ApplicationELB"
+  metric_name = "HTTPCode_Target_5XX_Count"
+
+  dimensions = {
+    LoadBalancer = "${module.alb.load_balancer_arn_suffix}"
+  }
+
+  statistic           = "Sum"
+  period              = 60
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = "10"
+  evaluation_periods  = 2
+}
+
+resource "aws_cloudwatch_metric_alarm" "alb_target_response" {
+  alarm_name  = "search-alb-target-response"
+  alarm_actions     = [
+    "${data.aws_sns_topic.slack.arn}"
+  ]
+  namespace   = "AWS/ApplicationELB"
+  metric_name = "TargetResponseTime"
+
+  dimensions = {
+    LoadBalancer = "${module.alb.load_balancer_arn_suffix}"
+  }
+
+  statistic           = "Average"
+  period              = 60
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = "10"
+  evaluation_periods  = 2
 }
