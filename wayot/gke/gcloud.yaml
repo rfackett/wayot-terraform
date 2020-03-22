@@ -1,0 +1,37 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gcloud
+  labels:
+    app: gcloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gcloud
+  template:
+    metadata:
+      labels:
+        app: gcloud
+    spec:
+      containers:
+        - image: gcr.io/google.com/cloudsdktool/cloud-sdk:latest
+          name: gcloud
+          command: ["/bin/bash"]
+          stdin: true
+          tty: true
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+          resources:
+            requests:
+              memory: 0.5Gi
+              cpu: 500m
+            limits:
+              memory: 1Gi
+              cpu: 1
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-volumeclaim

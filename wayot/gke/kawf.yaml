@@ -1,0 +1,97 @@
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-search
+  annotations:
+    kubernetes.io/ingress.global-static-ip-name: search
+    networking.gke.io/managed-certificates: search
+spec:
+  backend:
+    serviceName: kawf
+    servicePort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: kawf
+  name: kawf
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+    - name: https
+      port: 443
+      targetPort: 443
+  selector:
+    app: kawf
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kawf
+  labels:
+    app: kawf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kawf
+  template:
+    metadata:
+      labels:
+        app: kawf
+    spec:
+      containers:
+        - image: us.gcr.io/ivory-cycle-233717/kawf
+          name: kawf
+          env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql
+                key: MYSQL_ROOT_PASSWORD
+          - name: DB_HOST
+            value: db
+          - name: MYSQL_DATABASE
+            value: kawf
+          - name: RO_USERNAME
+            value: www-data
+          - name: RO_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: kawf
+                key: RO_PASSWORD
+          - name: MYSQL_USER
+            value: root
+          - name: MYSQL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: kawf
+                key: MYSQL_PASSWORD
+          - name: APACHE_SERVER_NAME
+            value: search.wayot.org
+          - name: APACHE_DOCROOT
+            value: /var/www/html/config
+          - name: APACHE_SERVERALIAS
+            value: search.wayot.org
+          - name: BOUNCE_HOST
+            value: bounce.wayot.org
+          - name: COOKIE_HOST
+            value: .wayot.org
+          - name: DOMAIN
+            value: wayot.org
+          ports:
+            - containerPort: 80
+              name: http
+            - containerPort: 443
+              name: https
+          readinessProbe:
+            httpGet:
+              port: 80
+              path: /robots.txt
